@@ -8,7 +8,7 @@ from PIL import Image
 import os
 import tempfile
 from io import BytesIO
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
 
 # Titre de l'application
