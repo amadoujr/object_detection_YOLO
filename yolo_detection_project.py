@@ -1,12 +1,15 @@
 # Import the necessary libraries
 import cv2
 from ultralytics import YOLO
+import av
 import numpy as np
 import streamlit as st
 from PIL import Image
 import os
 import tempfile
 from io import BytesIO
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+
 
 # Titre de l'application
 st.title("Détection d'objets avec YOLOv5")
@@ -163,19 +166,41 @@ elif input_type == "Webcam":
 
     try:
         while run_webcam and not stop_webcam:
-            ret, frame = cap.read()
-            if not ret:
-                st.warning("Impossible de lire la webcam.")
-                break
-
-            # Détection et affichage
-            results = model(frame)
-            annotated_frame = results[0].plot()
-            annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-            stframe.image(annotated_frame_rgb, caption="Objets détectés")
+            webrtc_streamer(
+                key="yolo-detection",
+                video_processor_factory=YOLOVideoProcessor,
+                media_stream_constraints={"video": True, "audio": False},
+                )
+            #annotated_frame = results[0].plot()
+            #annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            #stframe.image(annotated_frame_rgb, caption="Objets détectés")
 
     except Exception as e:
         st.error("Erreur lors de la détection")
         st.write(e)
     finally:
         cap.release()
+
+#############################
+# webcam utils function
+#############################
+class YOLOVideoProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.model = model  # Charger le modèle une seule fois
+
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")  # Convertir le frame en format OpenCV
+        
+        # Détection avec YOLO
+        results = self.model(img)
+        
+        # Dessiner les boîtes autour des objets détectés
+        for r in results:
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])  # Coords de la boîte
+                label = f"{model.names[int(box.cls[0])]} {box.conf[0]:.2f}"  # Classe et confiance
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Dessiner le rectangle
+                cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+###
