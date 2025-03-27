@@ -27,26 +27,6 @@ with st.expander("À propos de cette application"):
     - **Webcam** : Activez votre webcam pour une détection en temps réel.
     """)
 
-# Sélecteur de thème
-theme = st.sidebar.selectbox("Choisir un thème :", ("Clair", "Sombre"))
-if theme == "Sombre":
-    st.markdown("""
-        <style>
-        body {
-            color: white;
-            background-color: #1e1e1e;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <style>
-        body {
-            color: black;
-            background-color: white;
-        }
-        </style>
-        """, unsafe_allow_html=True)
 
 # Chargement du modèle YOLOv5
 try:
@@ -63,6 +43,20 @@ input_type = st.sidebar.selectbox(
     key="input_type",
     placeholder="Choisir le type de données d'entrée"
 )
+#############################################
+# webcam utils function
+#############################################
+def callback_function(frame): 
+    img = frame.to_ndarray(format="bgr24")
+    results = model(img)
+    for r in results:
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            label = f"{model.names[int(box.cls[0])]} {box.conf[0]:.2f}"
+            img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            img = cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 
 # Détection sur une image
 if input_type == "Image":
@@ -161,46 +155,19 @@ elif input_type == "Vidéo":
 elif input_type == "Webcam":
     run_webcam = st.sidebar.checkbox("Démarrer la webcam")
     stop_webcam = st.sidebar.button("Arrêter la webcam")
-    cap = cv2.VideoCapture(0)
-    stframe = st.empty()
-
     try:
-        while run_webcam and not stop_webcam:
+        if (run_webcam and not stop_webcam) or run_webcam:
             webrtc_streamer(
-                key="yolo-detection",
-                video_processor_factory=YOLOVideoProcessor,
+                key="example_webrtc", 
+                video_frame_callback=callback_function,
+                mode=WebRtcMode.SENDRECV,
                 media_stream_constraints={"video": True, "audio": False},
-                )
-            #annotated_frame = results[0].plot()
-            #annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-            #stframe.image(annotated_frame_rgb, caption="Objets détectés")
-
+                server_rtc_configuration={  # Add this line
+                    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+                }
+            )
+        elif stop_webcam:
+            st.stop()
     except Exception as e:
         st.error("Erreur lors de la détection")
         st.write(e)
-    finally:
-        cap.release()
-
-#############################
-# webcam utils function
-#############################
-class YOLOVideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.model = model  # Charger le modèle une seule fois
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")  # Convertir le frame en format OpenCV
-        
-        # Détection avec YOLO
-        results = self.model(img)
-        
-        # Dessiner les boîtes autour des objets détectés
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])  # Coords de la boîte
-                label = f"{model.names[int(box.cls[0])]} {box.conf[0]:.2f}"  # Classe et confiance
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Dessiner le rectangle
-                cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-###
